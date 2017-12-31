@@ -18,7 +18,7 @@ def current_user():
         try:
             return User.objects.get({'_id': ObjectId(uid)})
         except DoesNotExist as err:
-            print('User model does not exists:', err)
+            print('current_user -->', 'User model does not exists for id %s :' % (uid), err)
             return None
     return None
 
@@ -30,7 +30,7 @@ def home():
         try:
             user = User.objects.get({'username': username})
         except DoesNotExist as err:
-            print('User model does not exists:', err)
+            print('home -->', 'User model does not exists for username %s :' % (username), err)
             user = User(username, 'password').save(force_insert=True)
 
         if not user:
@@ -57,41 +57,53 @@ def client():
                         'http://127.0.0.1:8001/authorized'
                     ]),
                     default_scopes=['email']
-                ).save(force_insert=True)
+                    ).save(force_insert=True)
 
     return jsonify(client_id=client.client_id,
-                    client_secret=client.client_secret)
+                   client_secret=client.client_secret)
 
 
 @oauth.clientgetter
 def load_client(client_id):
-    return Client.objects.get({'client_id': client_id})
+    try:
+        return Client.objects.get({'client_id': client_id})
+    except DoesNotExist as err:
+        print('load_client -->', 'Client model does not exists for client_id %s :' % (client_id), err)
+        return None
 
 
 @oauth.grantgetter
 def load_grant(client_id, code):
-    return Grant.objects.get({'client_id': client_id, 'code': code})
+    try:
+        return Grant.objects.get({'client_id': client_id, 'code': code})
+    except DoesNotExist as err:
+        print('load_grant', 'Grant model does not exists for client_id %s and code %s:' % (client_id, code), err)
+        return None
 
 
 @oauth.grantsetter
 def save_grant(client_id, code, request, *args, **kwargs):
     expires = datetime.utcnow() + timedelta(seconds=1000)
     grant = Grant(client_id=client_id,
-                    code=code['code'],
-                    redirect_uri=request.redirect_uri,
-                    expires=expires,
-                    scopes=' '.join(request.scopes),
-                    user=User.objects.get({'_id': ObjectId(request.client.user_id)})
-            ).save(force_insert=True)
+                  code=code['code'],
+                  redirect_uri=request.redirect_uri,
+                  expires=expires,
+                  scopes=' '.join(request.scopes),
+                  user=User.objects.get({'_id': ObjectId(request.client.user_id)})
+                  ).save(force_insert=True)
     return grant
 
 
 @oauth.tokengetter
 def load_token(access_token=None, refresh_token=None):
-    if access_token:
-        return Token.objects.get({'access_token': access_token})
-    elif refresh_token:
-        return Token.objects.get({'refresh_tokens': refresh_token})
+    try:
+        if access_token:
+            return Token.objects.get({'access_token': access_token})
+        elif refresh_token:
+            return Token.objects.get({'refresh_tokens': refresh_token})
+    except DoesNotExist as err:
+        print('load_token -->', 'Token model does not exists:', err)
+        return None
 
 
 @oauth.tokensetter
@@ -101,7 +113,7 @@ def save_token(token, request, *args, **kwargs):
         for t in toks:
             t.delete()
     except DoesNotExist as err:
-        print('Token model does not exists:', err)
+        print('Token model does not exists for client_id %s and user_id %s:' % (request.client.client_id, request.user.pk), err)
 
     expires_in = token['expires_in']
     expires = datetime.utcnow() + timedelta(seconds=expires_in)
@@ -112,7 +124,7 @@ def save_token(token, request, *args, **kwargs):
                 access_token=token['access_token'],
                 refresh_token=token['refresh_token'],
                 expires=expires
-            ).save(force_insert=True)
+                ).save(force_insert=True)
     return tok
 
 
@@ -131,10 +143,14 @@ def authorize(*args, **kwargs):
 
     if request.method == 'GET':
         client_id = kwargs.get('client_id')
-        client = Client.objects.get({'client_id': client_id})
-        kwargs['client'] = client
-        kwargs['user'] = user
 
+        try:
+            client = Client.objects.get({'client_id': client_id})
+            kwargs['client'] = client
+        except DoesNotExist as err:
+            print('authorize -->', 'Client model does not exists for client_id %s:' % (client_id), err)
+
+        kwargs['user'] = user
         return render_template('authorize.html', **kwargs)
 
     confirm = request.form.get('confirm', 'no')
